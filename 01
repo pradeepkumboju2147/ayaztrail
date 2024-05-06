@@ -1,0 +1,155 @@
+trigger:
+  branches:
+    include:
+      - master
+      - development
+      - staging
+
+variables:
+  GIT_STRATEGY: fetch
+  GIT_CLEAN_FLAGS: -ffdx -e node_modules/
+
+stages:
+- stage: Build
+  jobs:
+  - job: Build_Development
+    displayName: 'Build Development'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - checkout: self
+      fetchDepth: 1
+      clean: true
+    - script: |
+        cd c:/
+        cd Sites
+        cd cbdev.s.truelogic.com.au
+        Stop-Service -Name "CBSiteServices"
+        git reset --hard HEAD
+        git checkout development
+        git pull origin development
+        npm install
+        grunt stage
+        rm c:/PM2/CBSiteServices.log
+        Start-Service -Name "CBSiteServices"
+      displayName: 'Build Development'
+    environment: development
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/development')
+
+  - job: Test_Development
+    displayName: 'Test Development'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - checkout: self
+      fetchDepth: 1
+      clean: true
+    - script: |
+        cd c:/
+        cd Sites
+        cd cbdev.s.truelogic.com.au
+        set JEST_SLOWMO=0 
+        # npm test
+      displayName: 'Test Development'
+    environment: development
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/development')
+
+  - job: Build_Staging
+    displayName: 'Build Staging'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - checkout: self
+      fetchDepth: 1
+      clean: true
+    - script: |
+        cd c:/
+        cd Sites
+        cd cbstaging.s.truelogic.com.au
+        git reset --hard HEAD
+        git checkout staging
+        git pull origin staging
+        npm install
+        grunt stage
+      displayName: 'Build Staging'
+    environment: staging
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/staging')
+
+  - job: Test_Staging
+    displayName: 'Test Staging'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - checkout: self
+      fetchDepth: 1
+      clean: true
+    - script: |
+        cd c:/
+        cd Sites
+        cd cbstaging.s.truelogic.com.au
+        set JEST_SLOWMO=0 
+        set JEST_HOST=http://cbstaging.s.truelogic.com.au/
+        # npm test
+      displayName: 'Test Staging'
+    environment: staging
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/staging')
+
+- stage: Package_and_Upload
+  jobs:
+  - job: Package_and_Upload
+    displayName: 'Package and Upload'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - script: |
+        # Call package and upload script
+        . ".\Config Files\deploy_scripts\site_upload.ps1"
+      displayName: 'Package and Upload'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/master')
+
+- stage: Create_Servers
+  jobs:
+  - job: Create_Webs
+    displayName: 'Create Servers'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - script: |
+        . ".\Config Files\deploy_scripts\create_webs.ps1"  
+      displayName: 'Create Servers'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/master')
+
+- stage: Deploy
+  jobs:
+  - job: Swap_Webs
+    displayName: 'Swap Webs'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - script: |
+        . ".\Config Files\deploy_scripts\deploy_webs.ps1"
+      displayName: 'Swap Webs'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/master')
+
+  - job: Terminate_Dispatch
+    displayName: 'Terminate Dispatch'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - script: |
+        . ".\Config Files\deploy_scripts\terminate_dispatch.ps1"
+      displayName: 'Terminate Dispatch'
+    condition: eq(variables['Build.SourceBranch'], 'refs/heads/master')
+
+- stage: Cleanup
+  jobs:
+  - job: Terminate_Old_Webs
+    displayName: 'Terminate Old Webs'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+    - script: |
+        . ".\Config Files\deploy_scripts\terminate_webs.ps1"
+      displayName: 'Terminate Old Webs'
+    condition: eq(variables['Build.Reason'], 'manual')
+    dependsOn: Deploy
