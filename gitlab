@@ -1,0 +1,139 @@
+variables:
+  GIT_STRATEGY: fetch
+  GIT_CLEAN_FLAGS: -ffdx -e node_modules/
+
+stages:
+  - build
+  - test
+  - package and upload
+  - create servers
+  - deploy
+  - cleanup
+
+build development:
+   stage: build
+   script:
+      - cd c:/
+      - cd Sites
+      - cd cbdev.s.truelogic.com.au
+      - Stop-Service -Name "CBSiteServices"
+      - git reset --hard HEAD
+      - git checkout development
+      - git pull origin development
+      - npm install
+      - grunt stage
+      - rm c:/PM2/CBSiteServices.log
+      - Start-Service -Name "CBSiteServices"
+   variables:
+      GIT_STRATEGY: none
+   environment: development
+   only:
+      - development
+
+test development:
+   stage: test
+   script:
+      - cd c:/
+      - cd Sites
+      - cd cbdev.s.truelogic.com.au
+      - set JEST_SLOWMO=0 
+      #- npm test
+   variables:
+      GIT_STRATEGY: none   
+   environment: development
+   only:
+      - development
+
+build staging:
+   stage: build
+   script:
+      - cd c:/
+      - cd Sites
+      - cd cbstaging.s.truelogic.com.au
+      - git reset --hard HEAD
+      - git checkout staging
+      - git pull origin staging
+      - npm install
+      - grunt stage
+   variables:
+      GIT_STRATEGY: none
+   environment: staging
+   only:
+      - staging
+
+test staging:
+   stage: test
+   script:
+      - cd c:/
+      - cd Sites
+      - cd cbstaging.s.truelogic.com.au
+      - set JEST_SLOWMO=0 
+      - set JEST_HOST=http://cbstaging.s.truelogic.com.au/
+      #- npm test
+   variables:
+      GIT_STRATEGY: none   
+   environment: staging
+   only:
+      - staging
+
+Site:
+   stage: package and upload
+   script:
+      #call our package and upload script
+      - . ".\Config Files\deploy_scripts\site_upload.ps1"
+   when: manual
+   only:
+      - master   
+
+Skins:
+   stage: package and upload
+   script:
+      - . ".\Config Files\deploy_scripts\skins_upload.ps1"
+   when: manual
+   only:
+      - master         
+
+Template Includes:
+   stage: package and upload
+   script:
+      - . ".\Config Files\deploy_scripts\template_includes_upload.ps1"
+   when: manual
+   only:
+      - master         
+
+Webs:
+   stage: create servers
+   script:
+      - . ".\Config Files\deploy_scripts\create_webs.ps1"  
+   when: manual
+   allow_failure: true
+   only:
+      - master   
+
+Swap Webs:
+   stage: deploy
+   script:
+      - . ".\Config Files\deploy_scripts\deploy_webs.ps1"
+   when: manual
+   allow_failure: false
+   only:
+      - master   
+
+Terminate Dispatch:
+   stage: deploy
+   script:
+      - . ".\Config Files\deploy_scripts\terminate_dispatch.ps1"
+   when: manual
+   allow_failure: true
+   only:
+      - master   
+
+Terminate Old Webs:
+   stage: cleanup
+   script:
+      - . ".\Config Files\deploy_scripts\terminate_webs.ps1"
+   when: delayed
+   start_in: 24 hours
+   allow_failure: false
+   only:
+      - master   
